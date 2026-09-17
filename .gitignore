@@ -1,18 +1,42 @@
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+*.env
+local.properties
+secrets.properties
+
+# Firebase & Google Credentials
+google-services.json
+app/google-services.json
+firebase-applet-config.json
+
+# Keystores & Signing Keys
+*.jks
+*.keystore
+*.p12
+*.key
+*.pem
+*.pk8
+debug.keystore
+debug.keystore.base64
+my-upload-key.jks
+
+# IDE & Editor files
+.idea/
 *.iml
-.gradle
-.kotlin
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
 .DS_Store
+Thumbs.db
+*.bak
+
+# Build outputs
+.gradle/
+.kotlin/
 /build
+app/build
+**/build/
 /captures
 .externalNativeBuild
 .cxx
-local.properties
-.env
-debug.keystore
+.build-outputs/
+
