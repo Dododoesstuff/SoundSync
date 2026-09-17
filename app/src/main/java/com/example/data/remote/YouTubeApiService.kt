@@ -19,36 +19,36 @@ interface YouTubeApiService {
 
 @JsonClass(generateAdapter = true)
 data class YouTubeSearchResponse(
-    @Json(name = "items") val items: List<YouTubeSearchItem> = emptyList()
+    @field:Json(name = "items") val items: List<YouTubeSearchItem> = emptyList()
 )
 
 @JsonClass(generateAdapter = true)
 data class YouTubeSearchItem(
-    @Json(name = "id") val id: YouTubeIdItem,
-    @Json(name = "snippet") val snippet: YouTubeSnippetItem
+    @field:Json(name = "id") val id: YouTubeIdItem,
+    @field:Json(name = "snippet") val snippet: YouTubeSnippetItem
 )
 
 @JsonClass(generateAdapter = true)
 data class YouTubeIdItem(
-    @Json(name = "videoId") val videoId: String? = null
+    @field:Json(name = "videoId") val videoId: String? = null
 )
 
 @JsonClass(generateAdapter = true)
 data class YouTubeSnippetItem(
-    @Json(name = "title") val title: String,
-    @Json(name = "channelTitle") val channelTitle: String,
-    @Json(name = "description") val description: String = "",
-    @Json(name = "thumbnails") val thumbnails: YouTubeThumbnailsContainer? = null
+    @field:Json(name = "title") val title: String,
+    @field:Json(name = "channelTitle") val channelTitle: String,
+    @field:Json(name = "description") val description: String = "",
+    @field:Json(name = "thumbnails") val thumbnails: YouTubeThumbnailsContainer? = null
 )
 
 @JsonClass(generateAdapter = true)
 data class YouTubeThumbnailsContainer(
-    @Json(name = "high") val high: YouTubeThumbnailItem? = null,
-    @Json(name = "medium") val medium: YouTubeThumbnailItem? = null,
-    @Json(name = "default") val default: YouTubeThumbnailItem? = null
+    @field:Json(name = "high") val high: YouTubeThumbnailItem? = null,
+    @field:Json(name = "medium") val medium: YouTubeThumbnailItem? = null,
+    @field:Json(name = "default") val default: YouTubeThumbnailItem? = null
 )
 
 @JsonClass(generateAdapter = true)
 data class YouTubeThumbnailItem(
-    @Json(name = "url") val url: String = ""
+    @field:Json(name = "url") val url: String = ""
 )

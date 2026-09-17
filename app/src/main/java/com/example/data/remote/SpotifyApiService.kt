@@ -30,54 +30,54 @@ interface SpotifyApiService {
 
 @JsonClass(generateAdapter = true)
 data class SpotifyTokenResponse(
-    @Json(name = "access_token") val accessToken: String,
-    @Json(name = "token_type") val tokenType: String,
-    @Json(name = "expires_in") val expiresIn: Int
+    @field:Json(name = "access_token") val accessToken: String,
+    @field:Json(name = "token_type") val tokenType: String,
+    @field:Json(name = "expires_in") val expiresIn: Int
 )
 
 @JsonClass(generateAdapter = true)
 data class SpotifySearchResponse(
-    @Json(name = "tracks") val tracks: SpotifyTracksPaging? = null
+    @field:Json(name = "tracks") val tracks: SpotifyTracksPaging? = null
 )
 
 @JsonClass(generateAdapter = true)
 data class SpotifyTracksPaging(
-    @Json(name = "items") val items: List<SpotifyTrackItem> = emptyList(),
-    @Json(name = "total") val total: Int = 0
+    @field:Json(name = "items") val items: List<SpotifyTrackItem> = emptyList(),
+    @field:Json(name = "total") val total: Int = 0
 )
 
 @JsonClass(generateAdapter = true)
 data class SpotifyTrackItem(
-    @Json(name = "id") val id: String,
-    @Json(name = "name") val name: String,
-    @Json(name = "artists") val artists: List<SpotifyArtistItem> = emptyList(),
-    @Json(name = "album") val album: SpotifyAlbumItem? = null,
-    @Json(name = "duration_ms") val durationMs: Int = 0,
-    @Json(name = "explicit") val explicit: Boolean = false,
-    @Json(name = "popularity") val popularity: Int = 0,
-    @Json(name = "preview_url") val previewUrl: String? = null,
-    @Json(name = "external_urls") val externalUrls: Map<String, String>? = null,
-    @Json(name = "external_ids") val externalIds: Map<String, String>? = null,
-    @Json(name = "uri") val uri: String = ""
+    @field:Json(name = "id") val id: String,
+    @field:Json(name = "name") val name: String,
+    @field:Json(name = "artists") val artists: List<SpotifyArtistItem> = emptyList(),
+    @field:Json(name = "album") val album: SpotifyAlbumItem? = null,
+    @field:Json(name = "duration_ms") val durationMs: Int = 0,
+    @field:Json(name = "explicit") val explicit: Boolean = false,
+    @field:Json(name = "popularity") val popularity: Int = 0,
+    @field:Json(name = "preview_url") val previewUrl: String? = null,
+    @field:Json(name = "external_urls") val externalUrls: Map<String, String>? = null,
+    @field:Json(name = "external_ids") val externalIds: Map<String, String>? = null,
+    @field:Json(name = "uri") val uri: String = ""
 )
 
 @JsonClass(generateAdapter = true)
 data class SpotifyArtistItem(
-    @Json(name = "id") val id: String = "",
-    @Json(name = "name") val name: String = ""
+    @field:Json(name = "id") val id: String = "",
+    @field:Json(name = "name") val name: String = ""
 )
 
 @JsonClass(generateAdapter = true)
 data class SpotifyAlbumItem(
-    @Json(name = "id") val id: String = "",
-    @Json(name = "name") val name: String = "",
-    @Json(name = "images") val images: List<SpotifyImageItem> = emptyList(),
-    @Json(name = "release_date") val releaseDate: String? = null
+    @field:Json(name = "id") val id: String = "",
+    @field:Json(name = "name") val name: String = "",
+    @field:Json(name = "images") val images: List<SpotifyImageItem> = emptyList(),
+    @field:Json(name = "release_date") val releaseDate: String? = null
 )
 
 @JsonClass(generateAdapter = true)
 data class SpotifyImageItem(
-    @Json(name = "url") val url: String = "",
-    @Json(name = "height") val height: Int? = null,
-    @Json(name = "width") val width: Int? = null
+    @field:Json(name = "url") val url: String = "",
+    @field:Json(name = "height") val height: Int? = null,
+    @field:Json(name = "width") val width: Int? = null
 )

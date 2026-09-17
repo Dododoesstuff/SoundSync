@@ -4,6 +4,8 @@ import com.example.data.model.MusicPlatform
 import com.example.data.model.SearchCategory
 import com.example.data.model.SearchResultTrack
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -166,7 +168,7 @@ class UnifiedMusicSearchEngine {
                 if (jsonArray.length() > 1) {
                     val suggestionsArray = jsonArray.getJSONArray(1)
                     val list = mutableListOf<String>()
-                    for (i in 0 until suggestionsArray.length().coerceAtMost(6)) {
+                    for (i in 0 until suggestionsArray.length().coerceAtMost(8)) {
                         list.add(suggestionsArray.getString(i))
                     }
                     return@withContext list
@@ -192,33 +194,75 @@ class UnifiedMusicSearchEngine {
         if (trimmed.isBlank()) return@withContext emptyList()
 
         val parsed = QueryParser.parse(trimmed)
-        val results = mutableListOf<SearchResultTrack>()
 
-        try {
-            // 1. Fetch live metadata from global music catalog API (covers all commercial artists, tracks, and albums)
-            val liveItems = queryLiveGlobalMusicCatalog(parsed, categoryFilter)
-            results.addAll(liveItems)
-        } catch (e: Exception) {
-            e.printStackTrace()
+        // Execute parallel search queries across Tracks, Artists, Albums, and YouTube Music Direct inside a coroutineScope
+        val (tracksList, artistsList, albumsList, youtubeList) = coroutineScope {
+            val tracksDeferred = async { queryLiveGlobalMusicCatalog(parsed, SearchCategory.TRACKS, limit = 50) }
+            val artistsDeferred = async { queryLiveGlobalMusicCatalog(parsed, SearchCategory.ARTISTS, limit = 20) }
+            val albumsDeferred = async { queryLiveGlobalMusicCatalog(parsed, SearchCategory.ALBUMS, limit = 30) }
+            val youtubeDeferred = async { queryYouTubeMusicDirect(parsed.plainQuery, limit = 25) }
+
+            Tuple4Results(
+                try { tracksDeferred.await() } catch (_: Exception) { emptyList() },
+                try { artistsDeferred.await() } catch (_: Exception) { emptyList() },
+                try { albumsDeferred.await() } catch (_: Exception) { emptyList() },
+                try { youtubeDeferred.await() } catch (_: Exception) { emptyList() }
+            )
+        }
+
+        // Combine all raw results
+        val combinedRaw = when (categoryFilter) {
+            SearchCategory.TRACKS -> tracksList + youtubeList
+            SearchCategory.ARTISTS -> artistsList
+            SearchCategory.ALBUMS -> albumsList
+            SearchCategory.ALL -> artistsList + albumsList + tracksList + youtubeList
+        }
+
+        // Deduplicate and merge cross-platform attributes
+        val deduplicatedMap = LinkedHashMap<String, SearchResultTrack>()
+        for (item in combinedRaw) {
+            val key = "${item.category.name}:${item.cleanTitle.lowercase(Locale.ROOT)}:${item.cleanArtist.lowercase(Locale.ROOT)}"
+            val existing = deduplicatedMap[key]
+            if (existing != null) {
+                // Merge platform indicators and IDs
+                deduplicatedMap[key] = existing.copy(
+                    hasSpotifyMatch = existing.hasSpotifyMatch || item.hasSpotifyMatch,
+                    hasYouTubeMatch = existing.hasYouTubeMatch || item.hasYouTubeMatch,
+                    youtubeVideoId = existing.youtubeVideoId ?: item.youtubeVideoId,
+                    spotifyUri = existing.spotifyUri ?: item.spotifyUri,
+                    previewUrl = existing.previewUrl ?: item.previewUrl,
+                    coverUrl = if (existing.coverUrl.contains("unsplash") && !item.coverUrl.contains("unsplash")) item.coverUrl else existing.coverUrl
+                )
+            } else {
+                deduplicatedMap[key] = item
+            }
+        }
+
+        var results = deduplicatedMap.values.toList()
+
+        // Filter by requested category scope
+        if (categoryFilter != SearchCategory.ALL) {
+            results = results.filter { it.category == categoryFilter }
         }
 
         // Filter by requested music platform
-        var filtered = when (platformFilter) {
-            MusicPlatform.SPOTIFY -> results.filter { it.hasSpotifyMatch }
-            MusicPlatform.YOUTUBE_MUSIC -> results.filter { it.hasYouTubeMatch }
+        results = when (platformFilter) {
+            MusicPlatform.SPOTIFY -> results.filter { it.hasSpotifyMatch || it.platform == MusicPlatform.SPOTIFY }
+            MusicPlatform.YOUTUBE_MUSIC -> results.filter { it.hasYouTubeMatch || it.platform == MusicPlatform.YOUTUBE_MUSIC }
             MusicPlatform.UNIFIED -> results.filter { it.isUnifiedMatch }
             null -> results
         }
 
-        // Filter by requested category scope
-        if (categoryFilter != SearchCategory.ALL) {
-            filtered = filtered.filter { it.category == categoryFilter }
-        }
+        // Mark Top Result
+        if (results.isNotEmpty()) {
+            val topIndex = results.indexOfFirst {
+                it.cleanTitle.equals(parsed.plainQuery, ignoreCase = true) ||
+                it.cleanArtist.equals(parsed.plainQuery, ignoreCase = true)
+            }.let { if (it >= 0) it else 0 }
 
-        // Designate the top matching track as the Top Result
-        if (filtered.isNotEmpty()) {
-            val top = filtered.first().copy(isTopResult = true)
-            listOf(top) + filtered.drop(1)
+            results.mapIndexed { idx, track ->
+                if (idx == topIndex) track.copy(isTopResult = true) else track.copy(isTopResult = false)
+            }
         } else {
             emptyList()
         }
@@ -226,7 +270,8 @@ class UnifiedMusicSearchEngine {
 
     private fun queryLiveGlobalMusicCatalog(
         parsed: ParsedSearchQuery,
-        category: SearchCategory
+        category: SearchCategory,
+        limit: Int = 30
     ): List<SearchResultTrack> {
         val queryTerms = StringBuilder(parsed.plainQuery)
         if (!parsed.artistFilter.isNullOrBlank()) queryTerms.append(" ").append(parsed.artistFilter)
@@ -242,7 +287,7 @@ class UnifiedMusicSearchEngine {
         }
 
         val encoded = URLEncoder.encode(queryTerms.toString().trim(), StandardCharsets.UTF_8.name())
-        val url = "https://itunes.apple.com/search?term=$encoded&media=music&entity=$entityParam&limit=30"
+        val url = "https://itunes.apple.com/search?term=$encoded&media=music&entity=$entityParam&limit=$limit"
 
         val request = Request.Builder()
             .url(url)
@@ -268,10 +313,10 @@ class UnifiedMusicSearchEngine {
                 val artistName = obj.optString("artistName", "Unknown Artist")
                 val artistId = obj.optLong("artistId", 0L).toString()
                 val genre = obj.optString("primaryGenreName", "Music")
-                val artistLink = obj.optString("artistLinkUrl", "")
 
-                val spotifyUrl = "https://open.spotify.com/search/" + URLEncoder.encode(artistName, StandardCharsets.UTF_8.name())
-                val youtubeUrl = "https://music.youtube.com/search?q=" + URLEncoder.encode(artistName, StandardCharsets.UTF_8.name())
+                val queryEncoded = URLEncoder.encode(artistName, StandardCharsets.UTF_8.name())
+                val spotifyUrl = "https://open.spotify.com/search/$queryEncoded"
+                val youtubeUrl = "https://music.youtube.com/search?q=$queryEncoded"
 
                 trackList.add(
                     SearchResultTrack(
@@ -291,7 +336,7 @@ class UnifiedMusicSearchEngine {
                         genre = genre,
                         hasSpotifyMatch = true,
                         hasYouTubeMatch = true,
-                        spotifyUri = "spotify:search:" + URLEncoder.encode(artistName, StandardCharsets.UTF_8.name()),
+                        spotifyUri = "spotify:search:$queryEncoded",
                         youtubeVideoId = null,
                         cleanTitle = artistName,
                         cleanArtist = artistName,
@@ -309,8 +354,8 @@ class UnifiedMusicSearchEngine {
                 val genre = obj.optString("primaryGenreName", "Pop")
                 val releaseDate = obj.optString("releaseDate", "").take(4)
 
-                val spotifyUrl = "https://open.spotify.com/search/" + URLEncoder.encode("$artistName $albumName", StandardCharsets.UTF_8.name())
-                val youtubeUrl = "https://music.youtube.com/search?q=" + URLEncoder.encode("$artistName $albumName", StandardCharsets.UTF_8.name())
+                val queryEncoded = URLEncoder.encode("$artistName $albumName", StandardCharsets.UTF_8.name())
+                val spotifyUrl = "https://open.spotify.com/search/$queryEncoded"
 
                 trackList.add(
                     SearchResultTrack(
@@ -330,7 +375,7 @@ class UnifiedMusicSearchEngine {
                         genre = genre,
                         hasSpotifyMatch = true,
                         hasYouTubeMatch = true,
-                        spotifyUri = "spotify:search:" + URLEncoder.encode("$artistName $albumName", StandardCharsets.UTF_8.name()),
+                        spotifyUri = "spotify:search:$queryEncoded",
                         youtubeVideoId = null,
                         cleanTitle = MetadataCleaner.cleanTrackTitle(albumName),
                         cleanArtist = MetadataCleaner.cleanArtistName(artistName),
@@ -357,7 +402,6 @@ class UnifiedMusicSearchEngine {
 
                 val queryEncoded = URLEncoder.encode("$cleanArtist $cleanTitle", StandardCharsets.UTF_8.name())
                 val spotifyUrl = "https://open.spotify.com/search/$queryEncoded"
-                val youtubeUrl = "https://music.youtube.com/search?q=$queryEncoded"
 
                 trackList.add(
                     SearchResultTrack(
@@ -390,4 +434,69 @@ class UnifiedMusicSearchEngine {
 
         return trackList
     }
+
+    private fun queryYouTubeMusicDirect(query: String, limit: Int = 20): List<SearchResultTrack> {
+        val list = mutableListOf<SearchResultTrack>()
+        try {
+            val encoded = URLEncoder.encode("$query music audio", StandardCharsets.UTF_8.name())
+            val url = "https://www.youtube.com/results?search_query=$encoded"
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .header("Accept-Language", "en-US,en;q=0.9")
+                .build()
+
+            val response = httpClient.newCall(request).execute()
+            if (!response.isSuccessful) return emptyList()
+
+            val html = response.body?.string() ?: return emptyList()
+            
+            val videoIdPattern = Regex(""""videoId":"([a-zA-Z0-9_-]{11})"""")
+            val matches = videoIdPattern.findAll(html).map { it.groupValues[1] }.distinct().take(limit).toList()
+
+            for ((idx, videoId) in matches.withIndex()) {
+                val cleanTitle = MetadataCleaner.cleanTrackTitle(query)
+                val cleanArtist = MetadataCleaner.cleanArtistName(query)
+                val spotifyQuery = URLEncoder.encode("$query", StandardCharsets.UTF_8.name())
+
+                list.add(
+                    SearchResultTrack(
+                        id = "yt-direct-$videoId-$idx",
+                        title = "$query (YouTube Music Stream)",
+                        artist = "YouTube Music",
+                        album = "Single • Audio Track",
+                        durationSec = 220,
+                        coverUrl = "https://i.ytimg.com/vi/$videoId/hqdefault.jpg",
+                        platform = MusicPlatform.YOUTUBE_MUSIC,
+                        externalId = videoId,
+                        externalUrl = "https://music.youtube.com/watch?v=$videoId",
+                        previewUrl = null,
+                        isrc = null,
+                        popularity = 88,
+                        isExplicit = false,
+                        genre = "Music",
+                        hasSpotifyMatch = true,
+                        hasYouTubeMatch = true,
+                        spotifyUri = "spotify:search:$spotifyQuery",
+                        youtubeVideoId = videoId,
+                        cleanTitle = cleanTitle,
+                        cleanArtist = cleanArtist,
+                        category = SearchCategory.TRACKS,
+                        matchConfidence = 0.90f
+                    )
+                )
+            }
+        } catch (_: Exception) {
+            // Graceful fallback on network timeout
+        }
+        return list
+    }
 }
+
+private data class Tuple4Results(
+    val tracksList: List<SearchResultTrack>,
+    val artistsList: List<SearchResultTrack>,
+    val albumsList: List<SearchResultTrack>,
+    val youtubeList: List<SearchResultTrack>
+)
+
