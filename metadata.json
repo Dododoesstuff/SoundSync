@@ -1,0 +1,6 @@
+{
+  "name": "SoundSync Unified Music",
+  "description": "Unified Spotify and YouTube Music hub with real-time sync, playlist migration, social rooms, offline playback, and listening analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
